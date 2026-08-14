@@ -14,6 +14,8 @@ export interface EnqueueOptions {
     data: any;
     maxRetries?: number;
     retryAfterHours?: number;
+    rateLimitGroup?: string;
+    maxPerMinute?: number;
 }
 
 export type TaskHandler = (data: any) => Promise<void>;
@@ -127,7 +129,9 @@ export class SnerdQueue {
             task_type: options.type,
             task_data: JSON.stringify(options.data),
             max_retries: options.maxRetries ?? 3,
-            retry_after_hours: options.retryAfterHours ?? 0.0
+            retry_after_hours: options.retryAfterHours ?? 0.0,
+            rate_limit_group: options.rateLimitGroup,
+            max_per_minute: options.maxPerMinute
         });
     }
 
