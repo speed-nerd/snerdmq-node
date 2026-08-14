@@ -16,6 +16,7 @@ export interface EnqueueOptions {
     retryAfterHours?: number;
     rateLimitGroup?: string;
     maxPerMinute?: number;
+    autoDedupe?: boolean;
 }
 
 export type TaskHandler = (data: any) => Promise<void>;
@@ -24,6 +25,7 @@ export class SnerdQueue {
     private engine: ChildProcess;
     private handlers: Map<string, TaskHandler> = new Map();
     private isShuttingDown: boolean = false;
+    private pendingEnqueues: Map<string, { resolve: () => void, reject: (err: Error) => void }> = new Map();
 
     constructor(options?: SnerdQueueOptions) {
         let binPath = options?.binaryPath;
@@ -91,8 +93,25 @@ export class SnerdQueue {
     }
 
     private async handleEngineMessage(msg: any) {
-        if (msg.action === 'execute') {
-            const handler = this.handlers.get(msg.task_type);
+        if (msg.action === 'ack') {
+            if (msg.task_id) {
+                const pending = this.pendingEnqueues.get(msg.task_id);
+                if (pending) {
+                    pending.resolve();
+                    this.pendingEnqueues.delete(msg.task_id);
+                }
+            }
+        } else if (msg.action === 'error') {
+            if (msg.task_id) {
+                const pending = this.pendingEnqueues.get(msg.task_id);
+                if (pending) {
+                    pending.reject(new Error(msg.message));
+                    this.pendingEnqueues.delete(msg.task_id);
+                }
+            } else {
+                console.error(`[Snerd] Error from engine: ${msg.message}`);
+            }
+        } else if (msg.action === 'execute') {            const handler = this.handlers.get(msg.task_type);
             
             if (!handler) {
                 this.send({ action: 'result', task_id: msg.task_id, status: 'error', error_msg: 'No handler registered for this task type.' });
@@ -122,16 +141,20 @@ export class SnerdQueue {
         this.send({ action: 'register', task_type: taskType });
     }
 
-    public enqueue(options: EnqueueOptions) {
-        this.send({
-            action: 'enqueue',
-            task_id: options.id,
-            task_type: options.type,
-            task_data: JSON.stringify(options.data),
-            max_retries: options.maxRetries ?? 3,
-            retry_after_hours: options.retryAfterHours ?? 0.0,
-            rate_limit_group: options.rateLimitGroup,
-            max_per_minute: options.maxPerMinute
+    public enqueue(options: EnqueueOptions): Promise<void> {
+        return new Promise((resolve, reject) => {
+            this.pendingEnqueues.set(options.id, { resolve, reject });
+            this.send({
+                action: 'enqueue',
+                task_id: options.id,
+                task_type: options.type,
+                task_data: JSON.stringify(options.data),
+                max_retries: options.maxRetries ?? 3,
+                retry_after_hours: options.retryAfterHours ?? 0.0,
+                rate_limit_group: options.rateLimitGroup,
+                max_per_minute: options.maxPerMinute,
+                auto_dedupe: options.autoDedupe
+            });
         });
     }
 
