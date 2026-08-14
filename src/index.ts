@@ -17,6 +17,7 @@ export interface EnqueueOptions {
     rateLimitGroup?: string;
     maxPerMinute?: number;
     autoDedupe?: boolean;
+    urgencyScore?: number;
 }
 
 export type TaskHandler = (data: any) => Promise<void>;
@@ -153,7 +154,8 @@ export class SnerdQueue {
                 retry_after_hours: options.retryAfterHours ?? 0.0,
                 rate_limit_group: options.rateLimitGroup,
                 max_per_minute: options.maxPerMinute,
-                auto_dedupe: options.autoDedupe
+                auto_dedupe: options.autoDedupe,
+                urgency_score: options.urgencyScore
             });
         });
     }
