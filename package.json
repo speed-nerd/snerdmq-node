@@ -1,6 +1,6 @@
 {
   "name": "snerdmq-node",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "The official Node.js SDK for the SnerdMQ background job engine.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

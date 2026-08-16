@@ -1,6 +1,6 @@
 <div align="center">
   <img src="./assets/Designer-9.png" height="120" alt="SnerdMQ Node.js Logo" />
-  <h1>🚀 SnerdMQ Node.js SDK v0.2.1</h1>
+  <h1>🚀 SnerdMQ Node.js SDK v0.3.0</h1>
   <p>The official Node.js & TypeScript SDK for SnerdMQ – A C-speed, zero-dependency background job engine.</p>
 
   [![npm version](https://img.shields.io/npm/v/snerdmq-node)](https://www.npmjs.com/package/snerdmq-node)
@@ -9,7 +9,7 @@
 
 This is the official Node.js client for **SnerdMQ**. It acts as a lightweight, elegant wrapper over the underlying Rust background daemon. It handles all JSON-RPC communication, standard I/O piping, and event loop orchestration so you can write background jobs natively in JavaScript or TypeScript.
 
-## ✨ v0.2.1 AI-Era Features
+## ✨ v0.3.0 AI Features
 - **Smart API Rate-Limiting**: Natively tracks `rateLimitGroup` execution velocity to prevent 429 "Too Many Requests" API errors.
 - **Payload-Hashing Deduplication**: Automatically computes cryptographic hashes to drop duplicate tasks instantly.
 - **Dynamic Float Prioritization**: A native Binary Max-Heap bypasses standard FIFO rules for high urgency tasks.
@@ -17,13 +17,21 @@ This is the official Node.js client for **SnerdMQ**. It acts as a lightweight, e
 - **Native TypeScript**: Written in 100% TypeScript. Enjoy full autocomplete and strict type checking out of the box.
 - **Zero Config**: No redis, no databases, no ports. Just start enqueuing jobs.
 
-### ⚙️ Advanced Task Configuration (v0.2.1)
+### ⚙️ Advanced Task Configuration (v0.3.0)
 To power complex AI workflows, tasks can now be configured with advanced orchestration parameters:
 
 * **`autoDedupe` (`boolean`)**: If set to `true`, the daemon computes a cryptographic hash of the `type` and `data`. If an identical payload is currently sitting in the queue pending execution, this new task is silently dropped. Excellent for preventing duplicate generative AI requests from trigger-happy users!
 * **`urgencyScore` (`number`)**: A value (e.g. `0.99`) used to bypass the standard FIFO queue. SnerdMQ uses a true Binary Max-Heap to continually float tasks with the highest urgency score to the very front of the execution line. Standard tasks default to `0.0`.
 * **`rateLimitGroup` (`string`)**: A custom string (e.g. `"openai_api"` or `"db_writes"`) that groups tasks together for backpressure control.
 * **`maxPerMinute` (`number`)**: Used in conjunction with `rateLimitGroup`. If the queue processes more tasks in this group than the allowed limit within a 60-second rolling window, further tasks in this group are temporarily paused. This natively prevents 429 "Too Many Requests" errors when bursting third-party APIs.
+* **`executeAt` (`string` | `Date`)**: A timestamp of when the job should be executed in the future.
+* **`cron` (`string`)**: A cron expression (e.g. `"0 * * * *"`) for recurring jobs. Shorthands like `"2h"` or `"10m"` are also supported.
+
+### 🕒 Cron Jobs vs. Retryable Jobs
+When using the new scheduling features, it is important to understand the difference between Cron and Retry behaviors:
+> - **A Cron Job** is a *Repeatable Job* that executes again **only after a success**, on a fixed schedule.
+> - **A Retryable Job** is a *Recovery Job* that executes again **only after a failure**, attempting to recover using the `retryAfter` backoff.
+> - **Combined:** If a Cron Job fails, it temporarily uses `retryAfter` to retry until it recovers. Once it succeeds, it goes back to ticking on its standard cron schedule!
 
 ## 📦 Installation
 
@@ -58,9 +66,11 @@ queue.enqueue({
     data: { to: 'john@wick.com', subject: 'Continental Update' },
     maxRetries: 3,
     rateLimitGroup: 'email_api',
-    maxPerMinute: 100,
+
+
     autoDedupe: true,
-    urgencyScore: 0.99
+    urgencyScore: 0.99,
+    cron: "1h" // Runs every 1 hour!
 });
 
 // 4. (Optional) Safely kill the daemon when your Node app exits

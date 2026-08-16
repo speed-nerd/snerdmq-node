@@ -24,6 +24,8 @@ export interface EnqueueOptions {
     maxPerMinute?: number;
     autoDedupe?: boolean;
     urgencyScore?: number;
+    executeAt?: string | Date;
+    cron?: string;
 }
 
 export type TaskHandler = (data: any) => Promise<void>;
@@ -187,7 +189,9 @@ export class SnerdQueue {
                 rate_limit_group: options.rateLimitGroup,
                 max_per_minute: options.maxPerMinute,
                 auto_dedupe: options.autoDedupe,
-                urgency_score: options.urgencyScore
+                urgency_score: options.urgencyScore,
+                execute_at: options.executeAt instanceof Date ? options.executeAt.toISOString() : options.executeAt,
+                cron: options.cron
             });
         });
     }
