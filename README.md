@@ -27,6 +27,10 @@ To power complex AI workflows, tasks can now be configured with advanced orchest
 * **`executeAt` (`string` | `Date`)**: A timestamp of when the job should be executed in the future.
 * **`cron` (`string`)**: A cron expression (e.g. `"0 * * * *"`) for recurring jobs. Shorthands like `"2h"` or `"10m"` are also supported.
 * **`webhookUrl` (`string`)**: By providing a webhook URL, SnerdMQ will completely bypass your local Node handlers and dispatch the task payload via an HTTP POST request directly to the specified URL.
+* **`maxExecutionSeconds` (`number`)**: Optional hard timeout in seconds. If execution takes longer, it's marked as failed.
+
+### Note on Hard Timeouts (`maxExecutionSeconds`)
+When `maxExecutionSeconds` is provided, the Node SDK wraps the execution of your handler using `Promise.race` against a `setTimeout`. If the task takes longer than the timeout, the SDK will mark it as failed. The background Rust daemon also enforces this timeout at the IPC level.
 
 ### 🌐 HTTP Webhooks (Serverless Execution)
 You can configure a task to execute externally via an HTTP POST request. By setting a `webhookUrl`, the internal background processor will skip any registered handlers (`queue.registerHandler`) and directly invoke the HTTP endpoint.
@@ -77,7 +81,8 @@ queue.enqueue({
     autoDedupe: true,
     urgencyScore: 0.99,
     cron: "1h", // Runs every 1 hour!
-    webhookUrl: "https://api.example.com/webhook" // Execute via HTTP instead of local handlers
+    webhookUrl: "https://api.example.com/webhook", // Execute via HTTP instead of local handlers
+    maxExecutionSeconds: 300 // Max Execution Seconds
 });
 
 // 4. (Optional) Safely kill the daemon when your Node app exits

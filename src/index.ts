@@ -27,6 +27,7 @@ export interface EnqueueOptions {
     executeAt?: string | Date;
     cron?: string;
     webhookUrl?: string;
+    maxExecutionSeconds?: number;
 }
 
 export type TaskHandler = (data: any) => Promise<void>;
@@ -123,7 +124,8 @@ export class SnerdQueue {
             } else {
                 console.error(`[Snerd] Error from engine: ${msg.message}`);
             }
-        } else if (msg.action === 'execute') {            const handler = this.handlers.get(msg.task_type);
+        } else if (msg.action === 'execute') {
+            const handler = this.handlers.get(msg.task_type);
             
             if (!handler) {
                 this.send({ action: 'result', task_id: msg.task_id, status: 'error', error_msg: 'No handler registered for this task type.' });
@@ -132,9 +134,19 @@ export class SnerdQueue {
 
             try {
                 const parsedData = typeof msg.task_data === 'string' ? JSON.parse(msg.task_data) : msg.task_data;
-                await taskContext.run(msg.task_id, async () => {
+                const executePromise = taskContext.run(msg.task_id, async () => {
                     await handler(parsedData);
                 });
+                
+                if (msg.max_execution_seconds) {
+                    const timeoutPromise = new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error(`Task execution timed out after ${msg.max_execution_seconds} seconds`)), msg.max_execution_seconds * 1000);
+                    });
+                    await Promise.race([executePromise, timeoutPromise]);
+                } else {
+                    await executePromise;
+                }
+                
                 this.send({ action: 'result', task_id: msg.task_id, status: 'success' });
             } catch (error: any) {
                 this.send({ action: 'result', task_id: msg.task_id, status: 'error', error_msg: error.message || 'Unknown error during execution.' });
@@ -193,7 +205,8 @@ export class SnerdQueue {
                 urgency_score: options.urgencyScore,
                 execute_at: options.executeAt instanceof Date ? options.executeAt.toISOString() : options.executeAt,
                 cron: options.cron,
-                webhook_url: options.webhookUrl
+                webhook_url: options.webhookUrl,
+                max_execution_seconds: options.maxExecutionSeconds
             });
         });
     }
