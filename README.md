@@ -107,6 +107,8 @@ process.on('SIGINT', () => {
 
 When a task fails repeatedly and exhausts its `maxRetries`, the SnerdMQ daemon permanently moves it to the Dead Letter Queue. You can hook into this event to alert your team, update your database, or send a Slack message by registering a Max Retry Handler.
 
+> **Delivery semantics:** SnerdMQ provides **at-least-once** delivery. In rare cases — e.g. if the daemon is killed while a task is executing — a task may be executed again after restart. Make your handlers idempotent.
+
 ```typescript
 // 5. Catch tasks that have permanently failed (Dead Letter Queue)
 queue.registerMaxRetryHandler('send_email', async (data) => {
