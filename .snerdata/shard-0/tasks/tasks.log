@@ -1,0 +1,2 @@
+{"taskId":"jest-job-1","retryCount":0,"maxRetries":3,"retryAfterHours":0.0,"retryAfterTime":"2026-09-07T16:27:00.172940Z","taskData":"{\"user_id\":\"john_wick\",\"message\":\"Baba Yaga\"}","taskType":"test_notification","executeAt":"2026-09-07T16:27:00.172940Z"}
+{"taskId":"jest-job-1","retryCount":0,"maxRetries":3,"retryAfterHours":0.0,"retryAfterTime":"2026-09-07T16:27:00.172940Z","taskData":"{\"user_id\":\"john_wick\",\"message\":\"Baba Yaga\"}","taskType":"test_notification","deletedAt":"2026-09-07T16:27:02.176489Z","executeAt":"2026-09-07T16:27:00.172940Z"}
