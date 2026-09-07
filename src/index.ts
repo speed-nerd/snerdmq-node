@@ -12,6 +12,12 @@ const taskContext = new AsyncLocalStorage<string>();
 export interface SnerdQueueOptions {
     binaryPath?: string;
     storagePath?: string;
+    /** Number of shards to create on first boot (default: 1). */
+    shards?: number;
+    /** Max shards this instance will claim (default: 1). */
+    maxLocalShards?: number;
+    /** Shared worker concurrency budget across all owned shards (default: 100). */
+    maxWorkers?: number;
 }
 
 export interface EnqueueOptions {
@@ -39,6 +45,12 @@ export class SnerdQueue {
     private isShuttingDown: boolean = false;
     private pendingEnqueues: Map<string, { resolve: () => void, reject: (err: Error) => void }> = new Map();
     private wsClients: Set<WebSocket> = new Set();
+    /** Shard keys owned by this instance, updated from membership events. */
+    private _ownedShards: string[] = [];
+    /** Resolves when the daemon process has exited (used for drain). */
+    private _exitPromise: Promise<void> = Promise.resolve();
+    private _latestStats: any = { enqueued: 0, processed: 0, failed: 0, per_shard: [] };
+    private _statsInterval: NodeJS.Timeout | null = null;
 
     constructor(options?: SnerdQueueOptions) {
         let binPath = options?.binaryPath;
@@ -58,11 +70,23 @@ export class SnerdQueue {
             args.push(options.storagePath);
         }
 
-        this.engine = spawn(binPath, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+        // Pass sharding options as env vars for the daemon process.
+        const env: NodeJS.ProcessEnv = { ...process.env };
+        if (!env['HOSTNAME'])                      env['HOSTNAME']           = os.hostname();
+        if (options?.shards !== undefined)         env['SNERD_SHARDS']       = String(options.shards);
+        if (options?.maxLocalShards !== undefined) env['SNERD_MAX_SHARDS']   = String(options.maxLocalShards);
+        if (options?.maxWorkers !== undefined)     env['SNERD_MAX_WORKERS']  = String(options.maxWorkers);
+
+        this.engine = spawn(binPath, args, { stdio: ['pipe', 'pipe', 'pipe'], env });
 
         if (!this.engine.stdin || !this.engine.stdout || !this.engine.stderr) {
             throw new Error('[Snerd] Failed to initialize standard I/O pipes with the engine.');
         }
+
+        // Track daemon exit for graceful drain.
+        this._exitPromise = new Promise<void>(resolve => {
+            this.engine.once('exit', () => resolve());
+        });
 
         this.setupEventLoop();
 
@@ -106,10 +130,10 @@ export class SnerdQueue {
             console.error(`[Snerd] stdin error: ${err.message}`);
         });
 
-        this.engine.on('close', (code: number | null) => {
+        this.engine.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
             this.engineAlive = false;
             if (!this.isShuttingDown) {
-                console.warn(`[Snerd] Engine process terminated unexpectedly with code ${code}.`);
+                console.warn(`[Snerd] Engine process terminated unexpectedly with code ${code}, signal ${signal}.`);
             }
             // Reject all pending enqueue promises
             for (const [id, pending] of this.pendingEnqueues) {
@@ -138,6 +162,18 @@ export class SnerdQueue {
             } else {
                 console.error(`[Snerd] Error from engine: ${msg.message}`);
             }
+        } else if (msg.action === 'membership') {
+            // Informational only — daemon owns all routing.
+            this._ownedShards = msg.owned ?? [];
+            console.log(`[Snerd] Cluster: queue=${msg.queue} shards=${msg.shards} owned=[${this._ownedShards.join(', ')}] version=${msg.version}`);
+        } else if (msg.action === 'stats') {
+            console.log("[Snerd] Got stats from daemon:", msg);
+            this._latestStats = {
+                enqueued: msg.total_enqueued || 0,
+                processed: msg.total_executed || 0,
+                failed: msg.total_failed || 0,
+                per_shard: msg.per_shard || []
+            };
         } else if (msg.action === 'execute') {
             const handler = this.handlers.get(msg.task_type);
             
@@ -195,7 +231,7 @@ export class SnerdQueue {
     }
 
     private send(msg: any) {
-        if (this.engine.stdin && !this.isShuttingDown && this.engineAlive) {
+        if (this.engine.stdin && this.engineAlive) {
             try {
                 this.engine.stdin.write(JSON.stringify(msg) + '\n');
             } catch (e: any) {
@@ -216,6 +252,9 @@ export class SnerdQueue {
     }
 
     public enqueue(options: EnqueueOptions): Promise<void> {
+        if (this.isShuttingDown) {
+            return Promise.reject(new Error('[Snerd] Queue is shutting down; enqueue rejected.'));
+        }
         return new Promise((resolve, reject) => {
             this.pendingEnqueues.set(options.id, { resolve, reject });
             this.send({
@@ -237,10 +276,42 @@ export class SnerdQueue {
         });
     }
 
-    public shutdown() {
+    /** Returns the shard keys currently owned by this instance (from last membership event). */
+    public get ownedShards(): string[] {
+        return [...this._ownedShards];
+    }
+
+    /**
+     * Graceful shutdown: signals the daemon to drain in-flight tasks, then
+     * waits for the process to exit. New enqueues are rejected immediately.
+     * The execute-response path stays alive so in-flight tasks can complete.
+     */
+    public async shutdown(): Promise<void> {
         if (this.isShuttingDown) return;
         this.isShuttingDown = true;
-        this.engine.kill('SIGINT');
+
+        if (this._statsInterval) {
+            clearInterval(this._statsInterval);
+            this._statsInterval = null;
+        }
+
+        // Send SIGTERM — triggers the daemon's graceful drain (pause → drain → release claims → exit).
+        if (this.engineAlive) {
+            this.engine.kill('SIGTERM');
+        }
+
+        // Wait for the daemon to exit, with a hard timeout as a safety net.
+        const DRAIN_TIMEOUT_MS = 35_000;
+        await Promise.race([
+            this._exitPromise,
+            new Promise<void>(resolve => setTimeout(resolve, DRAIN_TIMEOUT_MS)),
+        ]);
+
+        // Reject any enqueues that never got an ack.
+        for (const [id, pending] of this.pendingEnqueues) {
+            pending.reject(new Error(`[Snerd] Engine shut down before ack for task '${id}'`));
+        }
+        this.pendingEnqueues.clear();
     }
 
     public yieldProgress(data: string) {
@@ -252,9 +323,19 @@ export class SnerdQueue {
     }
 
     public startDashboard(port: number = 8080) {
+        if (!this._statsInterval) {
+            this._statsInterval = setInterval(() => {
+                this.send({ action: 'stats' });
+            }, 2000);
+            this.send({ action: 'stats' });
+        }
+
         const server = http.createServer((req, res) => {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+
             const storagePath = this.engine.spawnargs[1] || './.snerdata';
-            const tasksPath = path.join(storagePath, 'tasks', 'tasks.log');
 
             const corsHeaders = {
                 'Access-Control-Allow-Origin': '*',
@@ -278,38 +359,35 @@ export class SnerdQueue {
                         res.end('Dashboard UI not found in static folder.');
                     }
                 } else if (req.url === '/api/stats') {
-                    const tasksMap = new Map();
-                    if (fs.existsSync(tasksPath)) {
+                    res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders });
+                    res.end(JSON.stringify(this._latestStats));
+                } else if (req.url === '/api/membership') {
+                    let membership = null;
+                    const memPath = path.join(storagePath, 'membership.json');
+                    if (fs.existsSync(memPath)) {
                         try {
-                            const content = fs.readFileSync(tasksPath, 'utf8');
-                            for (const line of content.split('\n')) {
-                                if (!line.trim()) continue;
-                                const t = JSON.parse(line);
-                                tasksMap.set(t.taskId, t);
-                            }
+                            membership = JSON.parse(fs.readFileSync(memPath, 'utf8'));
                         } catch(e) {}
-                    }
-                    const stats = { enqueued: 0, processed: 0, failed: 0 };
-                    for (const t of tasksMap.values()) {
-                        stats.enqueued++;
-                        if (t.deletedAt) {
-                            if (t.LastJobError) stats.failed++;
-                            else stats.processed++;
-                        }
                     }
                     res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders });
-                    res.end(JSON.stringify(stats));
+                    res.end(JSON.stringify(membership || { claims: {} }));
                 } else if (req.url === '/api/tasks') {
                     const tasksMap = new Map();
-                    if (fs.existsSync(tasksPath)) {
-                        try {
-                            const content = fs.readFileSync(tasksPath, 'utf8');
-                            for (const line of content.split('\n')) {
-                                if (!line.trim()) continue;
-                                const t = JSON.parse(line);
-                                tasksMap.set(t.taskId, t);
-                            }
-                        } catch(e) {}
+                    // Iterate over owned shards to aggregate tasks
+                    const shardsToRead = this._ownedShards.length > 0 ? this._ownedShards : [''];
+                    
+                    for (const shard of shardsToRead) {
+                        const tasksPath = shard ? path.join(storagePath, shard, 'tasks', 'tasks.log') : path.join(storagePath, 'tasks', 'tasks.log');
+                        if (fs.existsSync(tasksPath)) {
+                            try {
+                                const content = fs.readFileSync(tasksPath, 'utf8');
+                                for (const line of content.split('\n')) {
+                                    if (!line.trim()) continue;
+                                    const t = JSON.parse(line);
+                                    tasksMap.set(t.taskId, t);
+                                }
+                            } catch(e) {}
+                        }
                     }
                     
                     const formatted = [];

@@ -1,0 +1,2 @@
+{"taskId":"dummy-task-1788788356975","retryCount":0,"maxRetries":3,"retryAfterHours":0.0,"retryAfterTime":"2026-09-07T13:39:16.975778Z","taskData":"{\"msg\":\"Hello 243\"}","taskType":"test.dummy","executeAt":"2026-09-07T13:39:16.975778Z"}
+{"taskId":"dummy-task-1788788356975","retryCount":0,"maxRetries":3,"retryAfterHours":0.0,"retryAfterTime":"2026-09-07T13:39:16.975778Z","taskData":"{\"msg\":\"Hello 243\"}","taskType":"test.dummy","deletedAt":"2026-09-07T13:39:19.761464Z","executeAt":"2026-09-07T13:39:16.975778Z"}
