@@ -66,10 +66,6 @@ export class SnerdQueue {
 
         this.setupEventLoop();
 
-        // Graceful shutdown
-        process.on('SIGINT', this.shutdown.bind(this));
-        process.on('SIGTERM', this.shutdown.bind(this));
-        process.on('exit', this.shutdown.bind(this));
     }
 
     private engineAlive: boolean = true;
