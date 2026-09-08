@@ -1,6 +1,6 @@
 <div align="center">
   <img src="./assets/Designer-9.png" height="120" alt="SnerdMQ Node.js Logo" />
-  <h1>🚀 SnerdMQ Node.js SDK v0.3.5</h1>
+  <h1>🚀 SnerdMQ Node.js SDK v0.3.6</h1>
   <p>The official Node.js & TypeScript SDK for SnerdMQ – A C-speed, zero-dependency background job engine.</p>
 
   [![npm version](https://img.shields.io/npm/v/snerdmq-node)](https://www.npmjs.com/package/snerdmq-node)
@@ -10,7 +10,7 @@
 
 This is the official Node.js client for **SnerdMQ**. It acts as a lightweight, elegant wrapper over the underlying Rust background daemon. It handles all JSON-RPC communication, standard I/O piping, and event loop orchestration so you can write background jobs natively in JavaScript or TypeScript.
 
-## ✨ v0.3.5 AI Features
+## ✨ v0.3.6 AI Features
 - **Smart API Rate-Limiting**: Natively tracks `rateLimitGroup` execution velocity to prevent 429 "Too Many Requests" API errors.
 - **Payload-Hashing Deduplication**: Automatically computes cryptographic hashes to drop duplicate tasks instantly.
 - **Dynamic Float Prioritization**: A native Binary Max-Heap bypasses standard FIFO rules for high urgency tasks.
@@ -19,7 +19,7 @@ This is the official Node.js client for **SnerdMQ**. It acts as a lightweight, e
 - **Native TypeScript**: Written in 100% TypeScript. Enjoy full autocomplete and strict type checking out of the box.
 - **Zero Config**: No redis, no databases, no ports. Just start enqueuing jobs.
 
-### ⚙️ Advanced Task Configuration (v0.3.5)
+### ⚙️ Advanced Task Configuration (v0.3.6)
 To power complex AI workflows, tasks can now be configured with advanced orchestration parameters:
 
 * **`autoDedupe` (`boolean`)**: If set to `true`, the daemon computes a cryptographic hash of the `type` and `data`. If an identical payload is currently sitting in the queue pending execution, this new task is silently dropped. Excellent for preventing duplicate generative AI requests from trigger-happy users!
@@ -231,3 +231,49 @@ const queue = new SnerdQueue({
 A shared network drive (AWS EFS or NFS) is still a good home for that storage when a single instance needs durable state — e.g. a container that restarts but must keep its queue. Native OS file locking (`flock`) keeps writes safe — no Redis required.
 
 *Built with ❤️ for John Wick tier engineering.*
+
+
+## Architecture Best Practices
+
+When building production applications with SnerdMQ, it is recommended to initialize the queue as a Singleton, isolate your domain workers into separate files/functions, use Dead Letter Queues (DLQ) for failed tasks via `RegisterMaxRetryHandler`, and ensure manual graceful shutdown. The embedded Dashboard UI can also be easily served from the same instance.
+
+```typescript
+import { SnerdQueue } from 'snerdmq-node';
+
+const queue = new SnerdQueue({ storagePath: './.snerdata' });
+
+function initEmailWorkers() {
+    queue.registerHandler('send_email', async (data) => {
+        console.log(`Sending email to ${data.email}...`);
+    });
+    queue.registerMaxRetryHandler('send_email', async (payload) => {
+        // Payload includes taskId, taskType, and data
+        console.log(`Email to ${payload.data.email} failed permanently. Dead letter processing...`);
+    });
+}
+
+function initImageWorkers() {
+    queue.registerHandler('process_image', async (data) => {
+        console.log(`Processing image ${data.imageId}...`);
+    });
+}
+
+async function main() {
+    initEmailWorkers();
+    initImageWorkers();
+
+    queue.startDashboard(8080);
+
+    // Keep process alive and handle shutdown
+    process.on('SIGINT', async () => {
+        await queue.shutdown();
+        process.exit(0);
+    });
+    process.on('SIGTERM', async () => {
+        await queue.shutdown();
+        process.exit(0);
+    });
+}
+
+main();
+```
