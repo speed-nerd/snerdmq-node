@@ -1,1 +1,0 @@
-{"taskId":"jest-job-1","retryCount":0,"maxRetries":3,"retryAfterHours":0.0,"retryAfterTime":"2026-08-21T15:36:43.156233Z","taskData":"{\"user_id\":\"john_wick\",\"message\":\"Baba Yaga\"}","taskType":"test_notification","executeAt":"2026-08-21T15:36:43.156233Z"}
