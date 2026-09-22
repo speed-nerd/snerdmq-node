@@ -34,6 +34,7 @@ export interface EnqueueOptions {
     cron?: string;
     webhookUrl?: string;
     maxExecutionSeconds?: number;
+    pool?: string;
 }
 
 export type TaskHandler = (data: any) => Promise<void>;
@@ -271,7 +272,8 @@ export class SnerdQueue {
                 execute_at: options.executeAt instanceof Date ? options.executeAt.toISOString() : options.executeAt,
                 cron: options.cron,
                 webhook_url: options.webhookUrl,
-                max_execution_seconds: options.maxExecutionSeconds
+                max_execution_seconds: options.maxExecutionSeconds,
+                pool: options.pool
             });
         });
     }
