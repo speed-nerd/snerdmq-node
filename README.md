@@ -1,6 +1,6 @@
 <div align="center">
   <img src="./assets/Designer-9.png" height="120" alt="SnerdMQ Node.js Logo" />
-  <h1>🚀 SnerdMQ Node.js SDK v0.3.6</h1>
+  <h1>🚀 SnerdMQ Node.js SDK v0.4.0</h1>
   <p>The official Node.js & TypeScript SDK for SnerdMQ – A C-speed, zero-dependency background job engine.</p>
 
   [![npm version](https://img.shields.io/npm/v/snerdmq-node)](https://www.npmjs.com/package/snerdmq-node)
@@ -10,7 +10,9 @@
 
 This is the official Node.js client for **SnerdMQ**. It acts as a lightweight, elegant wrapper over the underlying Rust background daemon. It handles all JSON-RPC communication, standard I/O piping, and event loop orchestration so you can write background jobs natively in JavaScript or TypeScript.
 
-## ✨ v0.3.6 AI Features
+## ✨ v0.4.0 AI Features
+- **Worker Pools**: Prevent slow generative AI tasks from starving fast DB tasks by dedicating workers to specific pools (e.g. `"urgent"`).
+- **Sharded Queues**: Distribute load across multiple queue nodes safely using file-backed lock sharding (`maxLocalShards`).
 - **Smart API Rate-Limiting**: Natively tracks `rateLimitGroup` execution velocity to prevent 429 "Too Many Requests" API errors.
 - **Payload-Hashing Deduplication**: Automatically computes cryptographic hashes to drop duplicate tasks instantly.
 - **Dynamic Float Prioritization**: A native Binary Max-Heap bypasses standard FIFO rules for high urgency tasks.
@@ -20,7 +22,7 @@ This is the official Node.js client for **SnerdMQ**. It acts as a lightweight, e
 - **Native TypeScript**: Written in 100% TypeScript. Enjoy full autocomplete and strict type checking out of the box.
 - **Zero Config**: No redis, no databases, no ports. Just start enqueuing jobs.
 
-### ⚙️ Advanced Task Configuration (v0.3.6)
+### ⚙️ Advanced Task Configuration (v0.4.0)
 To power complex AI workflows, tasks can now be configured with advanced orchestration parameters:
 
 * **`autoDedupe` (`boolean`)**: If set to `true`, the daemon computes a cryptographic hash of the `type` and `data`. If an identical payload is currently sitting in the queue pending execution, this new task is silently dropped. Excellent for preventing duplicate generative AI requests from trigger-happy users!
@@ -33,6 +35,7 @@ To power complex AI workflows, tasks can now be configured with advanced orchest
 * **`webhookUrl` (`string`)**: By providing a webhook URL, SnerdMQ will completely bypass your local Node handlers and dispatch the task payload via an HTTP POST request directly to the specified URL.
 * **`maxExecutionSeconds` (`number`)**: Optional hard timeout in seconds. If execution takes longer, it's marked as failed.
 * **`triggerAfterIds` (`string[]`)**: A list of parent task IDs that must complete successfully before this task is allowed to dispatch. Enables complex DAG workflows natively within the queue.
+* **`pool` (`string`)**: Dedicate this task to a specific worker pool (e.g. `"urgent"`).
 
 ### Note on Hard Timeouts (`maxExecutionSeconds`)
 When `maxExecutionSeconds` is provided, the Node SDK wraps the execution of your handler using `Promise.race` against a `setTimeout`. If the task takes longer than the timeout, the SDK will mark it as failed. The background Rust daemon also enforces this timeout at the IPC level.
@@ -96,6 +99,8 @@ queue.enqueue({
     urgencyScore: 0.99,                 // Float to the front of the queue
     webhookUrl: 'https://api.example.com/webhook', // Execute via HTTP instead of local handlers
     maxExecutionSeconds: 300,           // Hard timeout
+    pool: 'urgent',                     // Dedicate to a specific worker pool
+    triggerAfterIds: ['parent-123'],    // Wait for parent tasks to complete
 });
 
 // 4. Safely kill the daemon when your Node app exits (Required)
@@ -203,7 +208,11 @@ const second = new SnerdQueue(); // ❌ daemon refuses to start:
 // "Another daemon is already running on storage '.snerdata'"
 ```
 
-This applies across processes too — e.g. with Node's `cluster` module, every forked worker spawns its own daemon, so each worker needs its own `storagePath`.
+This applies across processes too — e.g. with Node's `cluster` module. To safely scale on the same disk without double-executing jobs, you must initialize the daemon with `maxLocalShards`:
+```typescript
+// SnerdMQ will partition the .snerdata locks across shards
+const queue = new SnerdQueue({ maxLocalShards: 4, maxWorkers: { "urgent": 5 } });
+```
 
 ### 🔀 Need multiple queues? Give each one its own storage
 
