@@ -14,6 +14,7 @@ This is the official Node.js client for **SnerdMQ**. It acts as a lightweight, e
 - **Smart API Rate-Limiting**: Natively tracks `rateLimitGroup` execution velocity to prevent 429 "Too Many Requests" API errors.
 - **Payload-Hashing Deduplication**: Automatically computes cryptographic hashes to drop duplicate tasks instantly.
 - **Dynamic Float Prioritization**: A native Binary Max-Heap bypasses standard FIFO rules for high urgency tasks.
+- **Job Chaining (DAGs)**: Define complex workflow dependencies natively. Tasks wait in a blocked state until their parent tasks succeed.
 - **Progress Streaming & Live Dashboard**: Handlers can stream progress updates to a built-in React UI dashboard served by the SDK.
 - **Zero Rust Required**: Our post-install script automatically downloads the pre-compiled C-speed Rust binary for your OS.
 - **Native TypeScript**: Written in 100% TypeScript. Enjoy full autocomplete and strict type checking out of the box.
@@ -31,6 +32,7 @@ To power complex AI workflows, tasks can now be configured with advanced orchest
 * **`cron` (`string`)**: A cron expression (e.g. `"0 * * * *"`) for recurring jobs. Shorthands like `"2h"` or `"10m"` are also supported.
 * **`webhookUrl` (`string`)**: By providing a webhook URL, SnerdMQ will completely bypass your local Node handlers and dispatch the task payload via an HTTP POST request directly to the specified URL.
 * **`maxExecutionSeconds` (`number`)**: Optional hard timeout in seconds. If execution takes longer, it's marked as failed.
+* **`triggerAfterIds` (`string[]`)**: A list of parent task IDs that must complete successfully before this task is allowed to dispatch. Enables complex DAG workflows natively within the queue.
 
 ### Note on Hard Timeouts (`maxExecutionSeconds`)
 When `maxExecutionSeconds` is provided, the Node SDK wraps the execution of your handler using `Promise.race` against a `setTimeout`. If the task takes longer than the timeout, the SDK will mark it as failed. The background Rust daemon also enforces this timeout at the IPC level.
