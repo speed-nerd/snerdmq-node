@@ -273,6 +273,24 @@ await queue.enqueue('final-job', 'send_report', { id: 1 }, 3, 0, null, null, 0, 
 ```
 
 
+### 🕒 Cron & Scheduled Jobs
+```typescript
+// Run every day at 08:00
+await queue.enqueue('daily-digest', 'send_email', { template: 'daily' }, 3, 0, null, null, 0, '0 8 * * *');
+```
+
+### 🛑 Hard Timeouts
+```typescript
+// Forcefully kill if running > 5 mins
+await queue.enqueue('risky-task', 'process_data', {}, 3, 0, null, null, 0, null, null, 300);
+```
+
+### 🌐 Webhook Callbacks
+```typescript
+// Execute via HTTP instead of local handlers
+await queue.enqueue('serverless-task', 'resize_image', { img: 'cat.jpg' }, 3, 0, null, null, 0, null, 'https://api.example.com/webhooks/snerdmq');
+```
+
 *Built with ❤️ for John Wick tier engineering.*
 
 
