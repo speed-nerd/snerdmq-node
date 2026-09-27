@@ -264,38 +264,42 @@ Simply pass an array of parent task IDs to the `trigger_after_ids` parameter whe
 
 ### 🍕 Sharded Queues (Scaling Out)
 
-SnerdMQ natively supports distributed execution across multiple servers while acting as a single logical queue. Just mount a shared storage drive (like AWS EFS) and boot multiple daemons. They will automatically lock and negotiate ownership of shards. No config required in the SDK for enqueueing! Just tell the daemon how many shards to claim on boot:
-
-```typescript
-// Boot a multi-tenant daemon that owns up to 4 shards locally
-const queue = new SnerdQueue({ maxLocalShards: 4 });
-```
+SnerdMQ natively supports distributed execution across multiple servers while acting as a single logical queue. Just mount a shared storage drive (like AWS EFS) and boot multiple daemons. They will automatically lock and negotiate ownership of shards. No config required in the SDK for enqueueing! Just tell the daemon how many shards to claim on boot.
 
 ```typescript
 // 1. Worker Pools: Route tasks to the 'urgent' pool
-await queue.enqueue('payment-job', 'process_payment', { amount: 100 }, 3, 0, null, null, 0, null, null, null, null, 'urgent');
+await queue.enqueue({
+    id: 'payment-job',
+    type: 'process_payment',
+    data: { amount: 100 },
+    pool: 'urgent'
+});
 
 // 2. Job Chaining: Block execution until parents succeed
-await queue.enqueue('final-job', 'send_report', { id: 1 }, 3, 0, null, null, 0, null, null, null, ['parent-job-1', 'parent-job-2']);
+await queue.enqueue({
+    id: 'final-job',
+    type: 'send_report',
+    data: { id: 1 },
+    triggerAfterIds: ['parent-job-1', 'parent-job-2']
+});
 ```
-
 
 ### 🕒 Cron & Scheduled Jobs
 ```typescript
 // Run every day at 08:00
-await queue.enqueue('daily-digest', 'send_email', { template: 'daily' }, 3, 0, null, null, 0, '0 8 * * *');
+await queue.enqueue({ id: 'daily-digest', type: 'send_email', data: { template: 'daily' }, cron: '0 8 * * *' });
 ```
 
 ### 🛑 Hard Timeouts
 ```typescript
 // Forcefully kill if running > 5 mins
-await queue.enqueue('risky-task', 'process_data', {}, 3, 0, null, null, 0, null, null, 300);
+await queue.enqueue({ id: 'risky-task', type: 'process_data', data: {}, maxExecutionSeconds: 300 });
 ```
 
 ### 🌐 Webhook Callbacks
 ```typescript
 // Execute via HTTP instead of local handlers
-await queue.enqueue('serverless-task', 'resize_image', { img: 'cat.jpg' }, 3, 0, null, null, 0, null, 'https://api.example.com/webhooks/snerdmq');
+await queue.enqueue({ id: 'serverless-task', type: 'resize_image', data: { img: 'cat.jpg' }, webhookUrl: 'https://api.example.com/webhooks/snerdmq' });
 ```
 
 *Built with ❤️ for John Wick tier engineering.*
