@@ -1,6 +1,6 @@
 <div align="center">
   <img src="./assets/Designer-9.png" height="120" alt="SnerdMQ Node.js Logo" />
-  <h1>🚀 SnerdMQ Node.js SDK v0.4.1</h1>
+  <h1>🚀 SnerdMQ Node.js SDK v0.4.2</h1>
   <p>The official Node.js & TypeScript SDK for SnerdMQ – A C-speed, zero-dependency background job engine.</p>
 
   [![npm version](https://img.shields.io/npm/v/snerdmq-node)](https://www.npmjs.com/package/snerdmq-node)
@@ -12,7 +12,7 @@ This is the official Node.js client for **SnerdMQ**. It acts as a lightweight, e
 
 > 📚 **Full Documentation & Advanced Features:** Check out the [official Node.js SDK documentation](https://speed-nerd.github.io/docs/sdks/node/) on our docs site!
 
-## ✨ v0.4.1 AI Features
+## ✨ v0.4.2 AI Features
 - **Worker Pools**: Prevent slow generative AI tasks from starving fast DB tasks by dedicating workers to specific pools (e.g. `"urgent"`).
 - **Sharded Queues**: Distribute load across multiple queue nodes safely using file-backed lock sharding (`maxLocalShards`).
 - **Smart API Rate-Limiting**: Natively tracks `rateLimitGroup` execution velocity to prevent 429 "Too Many Requests" API errors.
@@ -24,7 +24,7 @@ This is the official Node.js client for **SnerdMQ**. It acts as a lightweight, e
 - **Native TypeScript**: Written in 100% TypeScript. Enjoy full autocomplete and strict type checking out of the box.
 - **Zero Config**: No redis, no databases, no ports. Just start enqueuing jobs.
 
-### ⚙️ Advanced Task Configuration (v0.4.1)
+### ⚙️ Advanced Task Configuration (v0.4.2)
 To power complex AI workflows, tasks can now be configured with advanced orchestration parameters:
 
 * **`autoDedupe` (`boolean`)**: If set to `true`, the daemon computes a cryptographic hash of the `type` and `data`. If an identical payload is currently sitting in the queue pending execution, this new task is silently dropped. Excellent for preventing duplicate generative AI requests from trigger-happy users!
@@ -302,7 +302,7 @@ await queue.enqueue({ id: 'risky-task', type: 'process_data', data: {}, maxExecu
 await queue.enqueue({ id: 'serverless-task', type: 'resize_image', data: { img: 'cat.jpg' }, webhookUrl: 'https://api.example.com/webhooks/snerdmq' });
 ```
 
-*Built with ❤️ for John Wick tier engineering.*
+
 
 
 ## Architecture Best Practices
@@ -349,3 +349,5 @@ async function main() {
 
 main();
 ```
+
+*Built with ❤️ for John Wick tier engineering.*
